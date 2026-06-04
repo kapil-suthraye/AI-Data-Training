@@ -7,7 +7,10 @@ Features:
 3) Account not in use for more than 3 years should be moved to archive
 
 Conclusion:
-Comparing the outcomes from both AI systems, I could choose Azure Blob Storage as it is better object storage choice.
+Comparing the outcomes from both AI systems, I would choose Azure Blob Storage considering the following features:
+1) Two of the three features have native, first-class support.
+2) Equivalent lifecycle management for Hot, Cool and Archive transitions.
+3) Append Blob eliminates the most painful engineering gap.
 
 AI Outputs: 
 
