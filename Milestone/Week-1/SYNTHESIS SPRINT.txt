@@ -1,0 +1,136 @@
+=== SECTION A — PROBLEM STATEMENT ===
+ 
+A1. Write 80-120 words describing the 5-stage pipeline:
+    Ingest -> Structure -> Store -> Summarise -> Visualise.
+    Describe in your own words what each stage does and how the
+    output of one stage flows into the next.
+Ingest: The pipeline begins with ingest, where the PDF document is loaded and its content is extracted and sent to next stage.
+Structure: The extracted text then moves to Structure, here it is cleaned, organized, and converted into a structured format such as sections, metadata or JSON recrnds. The structured data is passed to next stage.
+Store: In store stage, data is saved in a database or object storage for reliable access and future processing. 
+Summarise: Summarize uses an AI model to generate concise insights and key points from the stored content. 
+Visualise: Finally, visualise presents the summaries and extracted information through charts, dashboards, or reports, making the document easier to understand and visually attractive.
+
+=== SECTION B — ARCHITECTURE DIAGRAM ===
+ 
+B1. Write a small text-based diagram (ASCII or arrow-list) showing the
+    5 stages and what flows between them. Example shape:
+ 
+       PDF -> [Ingest] -> raw text -> [Structure] -> DataFrame -> [Store]->text summary->[Summarise]->Charts, Bars, Images->[Visualise]
+
+=== SECTION C — CODE BLOCKS ===
+ 
+Each block must be in a fenced ```python block.
+ 
+C1. LOGGING SETUP: logging.basicConfig at INFO level at the top of the
+    code section.
+
+import logging 
+logging.basicConfig(level=logging.INFO)
+ 
+C2. INGEST + EXTRACT:
+       - import fitz (PyMuPDF)
+       - Open ./data/report.pdf
+       - Loop over all 3 pages
+       - Collect text per page into a list
+
+import fitz 
+doc = fitz.open("/data/report.pdf")
+page_list = []
+for page in doc :
+  page_list.append(page.get_text())
+print("File is ingested and text extraction is completed successfully.")
+ 
+C3. STRUCTURE:
+       - Build a pandas DataFrame with columns:
+             page_no
+             word_count
+             first_50_chars
+
+import pandas as pd
+import numpy as np 
+
+df = pd.DataFrame({
+    "page_no": range(1, len(page_list)+1),
+    "word_count": [len(text.split()) for text in page_list],
+    "first_50": [text[:50] for text in page_list]
+})
+print(df)
+print("File Structured successfully")
+ 
+C4. STORE:
+       - os.makedirs("output", exist_ok=True)
+       - df.to_csv("output/pages.csv", index=False)     (overwrite, not append)
+       - df.to_json("output/pages.json", orient="records")
+
+import os 
+os.makedirs("output", exist_ok=True)
+df.to_csv(
+    "output/pages.csv", index=False
+)
+df.to_json(
+    "output/pages.json", orient="records"
+)
+print("File stored successfully")
+ 
+C5. SUMMARISE WITH GROQ:
+       - from groq import Groq
+       - Combine all page text, take the first 2000 characters
+       - client.chat.completions.create(...) with:
+            model="llama-3.1-8b-instant"
+            prompt: "Summarise this in exactly 3 bullet points."
+       - Print response.choices[0].message.content
+
+from groq import Groq
+import os 
+from dotenv import load_dotenv
+prompt = """
+Summarise this in exactly 3 bullet points.
+"""
+messages = []
+messages.append(
+    {
+        "role": "user",
+        "message": prompt 
+    }
+)
+client = Groq(
+    api_key = GROQ_API_KEY
+)
+combined_text = " ".join(page_list)[:2000]
+response = client.chat.completions.create(
+    model = "llama-3.1-8b-instant",
+    messages = messages 
+)
+print(response.choices[0].message.content)
+print("File Summarized successfully")
+ 
+C6. VISUALISE:
+       - matplotlib bar chart of word_count per page
+       - Must have plt.title(), plt.xlabel(), plt.ylabel()
+
+import matplotlib.pyplot as plt
+fig, ax = plt.subplots(figsize=(6,4))
+bars = plt.bar(df["page_no"], df["word_count"])
+for bar, val in zip(bars, df["word_count"]):
+  ax.text(bar.get_x()+bar.get_width()/2, bar.get_height() + 0.01, f"{val}", ha='center', va='bottom', fontsize = 11, fontweight = 'bold')
+ax.title("SYNTHESIS SPRINT")
+ax.xlabel("Page Number")
+ax.ylabel("Word Count")
+plt.show()
+
+=== SECTION D — EXPECTED GROQ RESPONSE SHAPE ===
+ 
+D1. Write 3-5 lines of plain text describing what the Groq call would
+    print — i.e., what the response should look like. Mention that it
+    will be 3 bullet points and what the bullets are likely to cover.
+ 
+The Groq API call is expected to return a summary of the PDF content in exactly three bullet points. Each bullet point should highlight a key topic, finding from the document. The summary should be easy to read and capture major points from the PDF. It should not consist unnecessary or repeated details. The bullets will likely cover the document's main points, purpose, observations and conclusions or recommodations. 
+ 
+=== SECTION E — LESSONS LEARNED ===
+ 
+E1. Write 80-150 words covering all three of:
+       - What worked
+       - What was painful
+       - One MLOps practice from Day 6 you would add in production
+
+This assignment demonstrated how a complete document-processing pipeline can be built using Python, data engineering concepts for structuring, and generative AI. The PDF ingestion and text extraction process worked well, and transforming the extracted content into structured DataFrame made it analyze and perform operations. Storing the data into CSV and JSON provided reusable outputs. One challange was ensuring the extracted text was formatted correctly before summarization. Integrating Groq API and managing API keys also required careful configuration as even a slight mistake of uploading API key would trigger mails to admin and lock the key. One MLOps practice from Day 6 I would add in production is tracking and monitoring to capture pipeline runs, track model outputs, and improve response and output of the workflow.
