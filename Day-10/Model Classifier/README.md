@@ -1,6 +1,6 @@
 # NexaBank GenAI Use-Case Classifier
 
-**[▶ Launch App](https://github.com/kapil-suthraye/EY-Training/blob/main/Day-10/Model%20Classifier/nexabank-genai-classifier.html)**
+**[▶ Launch App](https://htmlpreview.github.io/?https://github.com/kapil-suthraye/EY-Training/blob/main/Day-10/Model%20Classifier/nexabank-genai-classifier.html)**
 
 
 |Card|Business Challenge             |Domain                |GenAI Type     |Primary Model   |
