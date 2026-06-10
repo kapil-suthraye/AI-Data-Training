@@ -1,8 +1,7 @@
 # NexaBank GenAI Use-Case Classifier
 
-**[▶ Launch App](https://htmlpreview.github.io/?https://github.com/kapil-suthraye/YOUR-REPO-NAME/blob/main/Day-10/Model%20Classifier/nexabank-genai-classifier.html)**
+**[▶ Launch App](https://github.com/kapil-suthraye/EY-Training/blob/main/Day-10/Model%20Classifier/nexabank-genai-classifier.html)**
 
-> Replace `YOUR-REPO-NAME` in the link above with your actual repository name.
 
 |Card|Business Challenge             |Domain                |GenAI Type     |Primary Model   |
 |----|-------------------------------|----------------------|---------------|----------------|
@@ -12,5 +11,3 @@
 |D   |Synthetic fraud training data  |Fraud Detection       |Synthetic Data |Gretel.ai       |
 |E   |Personalised marketing copy    |Growth                |Text Generation|GPT-4o          |
 |F   |Developer boilerplate generator|Developer Productivity|Code Generation|GitHub Copilot  |
-
-Built for the **EY GenAI Training Programme** · Hyderabad · 2026
