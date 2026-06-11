@@ -1,0 +1,8 @@
+service_name: week-2
+port: 8000
+log_level: INFO
+
+llm:
+  provider: groq
+  model: llama-3.3-70b-versatile
+  max_tokens: 300

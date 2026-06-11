@@ -1,0 +1,288 @@
+=== SECTION A — ARCHITECTURE BRIEF ===
+The Document Summarisation API is a FastAPI-based microservice that accepts text input and returns an AI-generated summary. A client sends a POST request to /summarize containing the document 
+text and a desired summary style (brief or detailed). The request first passes through middleware, which generates a request ID, records latency, and updates Prometheus metrics. 
+FastAPI then validates the request using Pydantic schemas. Based on the requested style, the service constructs a prompt and sends it to an OpenAI language model. 
+The generated summary is returned in a structured JSON response. The service also exposes health, readiness, and metrics endpoints for operational monitoring. A key trade-off is the use of 
+synchronous LLM calls instead of background processing. This keeps implementation simple and predictable but may increase request latency for large inputs or slower model responses.
+
+=== SECTION B — CONFIG FILE AND LOADER ===
+B1. Config.yaml 
+service_name: week-2
+port: 8000
+log_level: INFO
+
+llm:
+  provider: groq
+  model: llama-3.3-70b-versatile
+  max_tokens: 300
+
+B2. Pydantic Configuration Models and Loader
+import yaml
+
+from pydantic import BaseModel
+from typing import Literal
+
+
+class LLMConfig(BaseModel):
+    provider: Literal["groq"]
+    model: str
+    max_tokens: int
+
+
+class AppConfig(BaseModel):
+    service_name: str
+    port: int
+    log_level: str
+    llm: LLMConfig
+
+
+def load_config(path: str):
+    with open(path, "r") as f:
+        data = yaml.safe_load(f)
+
+    return AppConfig.model_validate(data)
+
+=== SECTION C — REQUEST / RESPONSE SCHEMAS ===
+from pydantic import BaseModel, Field
+from typing import Literal
+
+
+class SummariseRequest(BaseModel):
+    text: str = Field(min_length=20)
+    style: Literal["brief", "detailed"]
+
+
+class SummariseResponse(BaseModel):
+    summary: str
+    model: str
+    input_chars: int
+
+=== SECTION D — FASTAPI APP WITH /summarize ENDPOINT ===
+from fastapi import FastAPI
+
+from config import load_config
+from schemas import SummariseRequest
+from schemas import SummariseResponse
+from llm_client import generate_summary
+
+from middleware import LoggingMiddleware
+from contextlib import asynccontextmanager
+
+from fastapi import Response
+
+import logging
+
+from prometheus_client import (
+    generate_latest,
+    CONTENT_TYPE_LATEST
+)
+
+ready = False
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s"
+)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+
+    global ready
+
+    ready = True
+
+    yield
+
+    ready = False
+
+
+app = FastAPI(
+    lifespan=lifespan
+)
+
+app.add_middleware(LoggingMiddleware)
+
+config = load_config("config.yaml")
+
+@app.get("/")
+def root():
+    return {"message": "API Running"}
+
+
+@app.post("/summarize",
+          response_model=SummariseResponse)
+def summarize(request: SummariseRequest):
+
+    summary = generate_summary(
+        request.text,
+        request.style,
+        config.llm.model,
+        config.llm.max_tokens
+    )
+
+    return SummariseResponse(
+        summary=summary,
+        model=config.llm.model,
+        input_chars=len(request.text)
+    )
+
+=== SECTION E — MIDDLEWARE + METRICS + HEALTH/READY ===
+
+E1. Logging Middleware and Prometheus Metrics
+import logging
+import time
+
+from uuid import uuid4
+
+from starlette.middleware.base import BaseHTTPMiddleware
+
+from prometheus_client import Counter
+
+
+REQUEST_COUNT = Counter(
+    "request_count_total",
+    "Total API Requests",
+    ["method", "path"]
+)
+
+
+class LoggingMiddleware(BaseHTTPMiddleware):
+
+    async def dispatch(self, request, call_next):
+
+        request_id = str(uuid4())
+
+        start = time.perf_counter()
+
+        response = await call_next(request)
+
+        duration_ms = round(
+            (time.perf_counter() - start) * 1000,
+            2
+        )
+
+        REQUEST_COUNT.labels(
+            method=request.method,
+            path=request.url.path
+        ).inc()
+
+        logging.info(
+            f"request_id={request_id} "
+            f"method={request.method} "
+            f"path={request.url.path} "
+            f"status_code={response.status_code} "
+            f"duration_ms={duration_ms}"
+        )
+
+        response.headers["X-Request-ID"] = request_id
+
+        return response
+
+E2. Health, Readiness, and Metrics Endpoints
+@app.get("/healthz")
+def healthz():
+    return {
+        "status": "alive"
+    }
+
+@app.get("/readyz")
+def readyz():
+
+    if ready:
+        return {
+            "status": "ready"
+        }
+
+    return Response(
+        content='{"status":"not_ready"}',
+        status_code=503,
+        media_type="application/json"
+    )
+
+@app.get("/metrics")
+def metrics():
+
+    return Response(
+        content=generate_latest(),
+        media_type=CONTENT_TYPE_LATEST
+    )
+
+=== SECTION F — PYTEST TESTS ===
+from unittest.mock import patch
+
+from fastapi.testclient import TestClient
+
+from app import app
+
+
+client = TestClient(app)
+
+
+# Test-1 Happy Style 
+@patch("app.generate_summary")
+def test_summarize_happy_path_with_mocked_llm(
+    mock_generate_summary
+):
+
+    mock_generate_summary.return_value = (
+        "Mocked summary"
+    )
+
+    response = client.post(
+        "/summarize",
+        json={
+            "text":
+            "Artificial intelligence is transforming industries by improving productivity and efficiency.",
+            "style":
+            "brief"
+        }
+    )
+
+    assert response.status_code == 200
+
+    assert (
+        response.json()["summary"]
+        == "Mocked summary"
+    )
+
+# Test-2 Invalid Endpoint
+def test_summarize_invalid_style_returns_422():
+
+    response = client.post(
+        "/summarize",
+        json={
+            "text":
+            "Artificial intelligence is transforming industries by improving productivity and efficiency.",
+            "style":
+            "unknown"
+        }
+    )
+
+    assert response.status_code == 422
+
+#Test-3 Health Endpoint
+def test_healthz_returns_200_alive():
+
+    response = client.get(
+        "/healthz"
+    )
+
+    assert response.status_code == 200
+
+    assert response.json() == {
+        "status": "alive"
+    }
+
+=== SECTION G — REFLECTION ===
+The most effective aspect of building this service was how naturally the different components fit together.
+FastAPI, Pydantic, Prometheus, and OpenAI provide clear interfaces that make implementing validation, observability,
+and AI integration straightforward. 
+
+The most challenging part was designing tests that validate business logic without
+making real LLM calls. Mocking external depenedencies correctly requires careful understanding of SDK response
+structures and application boundaries. 
+
+If this service were promoted to production, the practise I would strongly recommend is observability through 
+structured logging, metrics, and health/readliness probes. These capabilities provide immediate visibility into system
+health, performance, and failures, enabiling faster troubleshooting, safer deployments, and better operational 
+reliability. 
